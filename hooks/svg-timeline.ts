@@ -115,7 +115,7 @@ function buildAt(all: readonly TimelineRow[], o: TimelineOpts, level: Level): { 
   const width = r(Math.max(200, o.width))
   const t0 = o.t0
   const t1 = Math.max(o.t1, t0 + 1000)
-  const labelW = r(Math.max(110, Math.min(220, width * 0.26)))
+  const labelW = r(Math.max(130, Math.min(300, width * 0.34)))
   const x0 = labelW + 8
   const x1 = width - 26
   const span = t1 - t0

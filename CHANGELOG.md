@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+
+- Timeline: a wider name column (up to a third of the pane), so agent names are readable.
+
 ## 0.1.1
 
 - Home directories show as `~` in tool summaries, live lines and transcripts, so the pane never shows whose machine an agent ran on.
