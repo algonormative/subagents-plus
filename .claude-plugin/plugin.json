@@ -1,7 +1,7 @@
 {
   "name": "subagents-plus",
-  "version": "0.1.3",
-  "description": "See your subagents: a /subagents pane with an expandable tree of every subagent (live activity, tokens, transcripts) and a timeline, live cards on Agent rows, and a band above the prompt",
+  "version": "0.2.0",
+  "description": "See your subagents and workflows: a /subagents pane with an expandable tree of every subagent and workflow run (live activity, phases, tokens, transcripts) and a timeline, live cards on Agent and Workflow rows, and a band above the prompt",
   "author": {
     "name": "algonormative",
     "url": "https://github.com/algonormative"

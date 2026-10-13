@@ -3,16 +3,17 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Lane, Session, UiState } from '../types'
 import type { Ev } from './events'
-import { MAIN, usageOf } from './events'
-import { clip, tildeHome } from './format'
+import { MAIN, runKey, usageOf } from './events'
+import { clip, sanitize, tildeHome } from './format'
 import { classify, summarize } from './kinds'
 import { axisEnd, pxWidth, SVG_ELEMENT_MAX } from './layout'
 import { emptySession, isLive, planBatch, reconcileEvents, reduceLane, reduceSession } from './model'
 import { timelineCells, sparkCells } from './raster'
 import { cardStripSvg, foldActivity, sparklineSvg } from './svg-mini'
 import { buildTimelineSvg } from './svg-timeline'
+import { parseNotification, parsePhases } from './workflow'
 import type { Actions, Kit, Picture, TranscriptRow } from './views'
-import { bandTree, cardTree, paneTree, timelineRows } from './views'
+import { bandTree, cardTree, paneTree, runCardTree, runSummary, timelineRows } from './views'
 
 // subagents-plus: hooks capture what subagents and the main loop do into a buffer; a
 // 400 ms loop folds it into $.state (model.ts); the pane, the band and the
@@ -52,6 +53,8 @@ const axisEnds = new Map<string, number>()
 const saying = new Map<string, { kind: 'text' | 'thinking' | 'tool'; text: string; at: number }>()
 const memo = new Map<string, Picture>()
 const builds = new Map<string, { shape: string; at: number; built: number }>()
+/** How often each workflow agent's meta.json has been looked for. */
+const phaseTries = new Map<string, number>()
 const REBUILD_MS = 8_000
 const diag = {
   loadedAt: 0,
@@ -125,6 +128,39 @@ async function reconcile($: EngineInterface, session: Session, now: number) {
     const list = await $.agent.list()
     for (const ev of reconcileEvents(session, list, now)) push(ev)
   } catch (err) { note('reconcile', err) }
+  await learnPhases($, session, now)
+}
+
+/** Each workflow agent's phase, from the meta.json its run writes beside its transcript. */
+async function learnPhases($: EngineInterface, session: Session, now: number) {
+  for (const d of Object.values(session.digests)) {
+    if (!d.run || d.phase) continue
+    const dir = session.workflows[d.run]?.transcriptDir
+    const tries = phaseTries.get(d.key) ?? 0
+    if (!dir || tries >= 10) continue
+    phaseTries.set(d.key, tries + 1)
+    try {
+      const raw = await $.fs.read(`${dir}/agent-${d.key}.meta.json`)
+      const phase = (JSON.parse(String(raw)) as { workflowPhase?: unknown }).workflowPhase
+      if (typeof phase === 'string' && phase) push({ t: 'lane-phase', epoch, at: now, lane: d.key, phase: clip(sanitize(phase), 40) })
+    } catch {
+      // Not written yet, or not a local run: try again on a later pass.
+    }
+  }
+}
+
+async function readPhases($: EngineInterface, key: string, scriptPath: string) {
+  try {
+    const phases = parsePhases(String(await $.fs.read(scriptPath)))
+    if (phases.length) push({ t: 'run-update', epoch, at: await $.clock.now(), lane: MAIN, key, patch: { phases } })
+  } catch (err) { note('phases', err) }
+}
+
+/** The text of a row's content, whatever its shape. */
+function textOf(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content.map(b => (b && typeof b === 'object' && typeof (b as { text?: unknown }).text === 'string' ? (b as { text: string }).text : '')).join('\n')
 }
 
 async function flush($: EngineInterface, o: Options, now: number) {
@@ -271,6 +307,7 @@ function actionsFor($: EngineInterface): Actions {
     toggleAnswer: () => void update($, uiRef, u => ({ ...u, fullAnswer: !u.fullAnswer })),
     jump: key => void jumpTo($, key),
     open: key => void openPane($, key),
+    openRun: key => void openRun($, key),
   }
 }
 
@@ -287,6 +324,13 @@ async function transcriptOf($: EngineInterface, agentId: string): Promise<Transc
     note('transcript', err)
     return 'unreadable'
   }
+}
+
+async function openRun($: EngineInterface, key: string) {
+  await update($, uiRef, (u): UiState => ({ ...u, userClosed: false, tab: 'tree', folded: (u.folded ?? []).filter(f => f !== `run:${key}`) }))
+  try {
+    await $.ui.open({ id: PANE, title: 'Agents', columns: 100 })
+  } catch (err) { note('open', err) }
 }
 
 async function jumpTo($: EngineInterface, key: string) {
@@ -435,12 +479,43 @@ export const register: Register = (on, options) => {
         if (typeof result.totalTokens === 'number') {
           ev.childTotals = { tokens: result.totalTokens, tools: Number(result.totalToolUseCount ?? 0), durationMs: Number(result.totalDurationMs ?? 0) }
         }
-      } else if (tool === 'Workflow' && typeof result.runId === 'string') {
-        ev.workflow = { runId: result.runId, ...(typeof result.workflowName === 'string' ? { name: clip(result.workflowName, 40) } : {}) }
+      } else if (tool === 'Workflow') {
+        const str = (k: string) => (typeof result[k] === 'string' && result[k] ? (result[k] as string) : undefined)
+        const remote = result.status === 'remote_launched'
+        const sessionUrl = str('sessionUrl')
+        ev.workflow = {
+          runId: str('runId'),
+          taskId: str('taskId'),
+          ...(str('workflowName') ? { name: clip(sanitize(str('workflowName')!), 40) } : {}),
+          transcriptDir: str('transcriptDir'),
+          scriptPath: str('scriptPath'),
+          // Only an https link to a cloud session is ever drawn.
+          ...(sessionUrl && /^https:\/\//.test(sessionUrl) ? { sessionUrl } : {}),
+          ...(remote ? { remote: true } : {}),
+        }
       }
     }
     push(ev)
+    // A run's phases are in its script; read them once, off the call's own path.
+    const key = ev.workflow ? runKey(ev.workflow) : undefined
+    if (key && ev.workflow?.scriptPath) void readPhases($, key, ev.workflow.scriptPath)
     return r
+  }).catch(($, e, next) => next(e))
+
+  // The end of a background run arrives as a task notification row.
+  on('session.append', async ($, e, next) => {
+    const out = await next(e)
+    if (e.origin.kind === 'task-notification') {
+      const end = parseNotification(textOf(e.message.content))
+      if (end) {
+        push({
+          t: 'run-update', epoch, at: await $.clock.now(), lane: MAIN, taskId: end.taskId,
+          patch: { status: end.status, endedAt: await $.clock.now(), agents: end.agents, tokens: end.tokens, durationMs: end.durationMs },
+        })
+        ensureLoop($, o)
+      }
+    }
+    return out
   }).catch(($, e, next) => next(e))
 
   on('turn.start', async ($, e, next) => {
@@ -492,7 +567,7 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const els = $.ui.resolve(e)
     const kit: Kit = {
-      surface: e.surface, Box: els.Box, Text: els.Text, Button: els.Button, Markdown: els.Markdown,
+      surface: e.surface, Box: els.Box, Text: els.Text, Button: els.Button, Markdown: els.Markdown, Link: els.Link,
       ...(e.surface !== 'terminal' && 'Svg' in els ? { Svg: els.Svg } : {}),
       ...(e.surface === 'terminal' && 'Raster' in els ? { Raster: els.Raster } : {}),
     }
@@ -567,7 +642,7 @@ export const register: Register = (on, options) => {
       if (grace && now - lastEnd > BAND_GRACE_MS) return next(e)
       const els = $.ui.resolve(e)
       const kit: Kit = {
-        surface: e.surface, Box: els.Box, Text: els.Text, Button: els.Button, Markdown: els.Markdown,
+        surface: e.surface, Box: els.Box, Text: els.Text, Button: els.Button, Markdown: els.Markdown, Link: els.Link,
         ...(e.surface !== 'terminal' && 'Svg' in els ? { Svg: els.Svg } : {}),
         ...(e.surface === 'terminal' && 'Raster' in els ? { Raster: els.Raster } : {}),
       }
@@ -581,6 +656,24 @@ export const register: Register = (on, options) => {
       // Another plugin's band (beads-band) still draws beneath ours.
       const beneath = await next(e)
       return <kit.Box flexDirection="column">{mine}{beneath}</kit.Box>
+    })
+  }
+
+  if (o.inlineCards !== 'off') {
+    on('ui.render', { component: 'ToolUse', props: { tool: 'Workflow' } }, async ($, e, next) => {
+      if (o.inlineCards === 'desktop' && e.surface === 'terminal') return next(e)
+      const session = await read($, sessionRef)
+      const key = session ? Object.keys(session.workflows).find(k => session.workflows[k]!.toolUseId === e.props.tool_use_id) : undefined
+      if (!key && !e.props.isRunning) return next(e)
+      const els = $.ui.resolve(e)
+      const kit: Kit = {
+        surface: e.surface, Box: els.Box, Text: els.Text, Button: els.Button, Markdown: els.Markdown, Link: els.Link,
+        ...(e.surface !== 'terminal' && 'Svg' in els ? { Svg: els.Svg } : {}),
+      }
+      const run = session && key ? runSummary(session, key, Date.now()) : undefined
+      const input = e.props.input as { name?: unknown } | undefined
+      const beneath = await next(e)
+      return runCardTree(kit, run, { name: typeof input?.name === 'string' ? clip(sanitize(input.name), 48) : undefined }, Math.max(Date.now(), session?.lastEventAt ?? 0), actionsFor($), beneath)
     })
   }
 
@@ -600,7 +693,7 @@ export const register: Register = (on, options) => {
       const now = Math.max(Date.now(), lane?.lastAt ?? 0)
       const els = $.ui.resolve(e)
       const kit: Kit = {
-        surface: e.surface, Box: els.Box, Text: els.Text, Button: els.Button, Markdown: els.Markdown,
+        surface: e.surface, Box: els.Box, Text: els.Text, Button: els.Button, Markdown: els.Markdown, Link: els.Link,
         ...(e.surface !== 'terminal' && 'Svg' in els ? { Svg: els.Svg } : {}),
       }
       const width = pxWidth(Math.min(e.viewport?.columns ?? 80, 110), 8)

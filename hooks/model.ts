@@ -2,8 +2,9 @@
 // never mutated, nothing here touches `$`. register.tsx owns the plumbing
 // (planBatch -> reduceLane per lane -> reduceSession) and the state families.
 
-import type { Digest, Kind, Lane, LaneMeta, LaneStatus, LaneTokens, Rollup, Session, Span, Usage } from '../types'
+import type { Digest, Kind, Lane, LaneMeta, LaneStatus, LaneTokens, Rollup, Session, Span, Usage, RunPatch } from '../types'
 import type { Ev } from './events'
+import { runKey } from './events'
 import { clip, label } from './format'
 
 export const CAPS = {
@@ -118,8 +119,23 @@ export type Plan = {
   colorNext: number
   /** tool_use id -> the lane keys it started. */
   toolUse: Map<string, string[]>
-  workflows: Record<string, { name?: string }>
+  /** Run key -> what this batch learned about the run. */
+  workflows: Record<string, RunPatch>
   dropped: number
+}
+
+const RUN_ENDED: ReadonlySet<string> = new Set(['completed', 'failed', 'killed'])
+
+/** Merges a patch into a run record: fields left out keep their value; an ended run never goes back to running. */
+export function mergeRun<T extends RunPatch>(prev: T, patch: RunPatch): T {
+  const out: RunPatch = { ...prev }
+  for (const [k, v] of Object.entries(patch) as [keyof RunPatch, unknown][]) {
+    if (v === undefined) continue
+    if (k === 'status' && prev.status && RUN_ENDED.has(prev.status) && v === 'running') continue
+    if (k === 'startedAt' && prev.startedAt !== undefined) continue
+    ;(out as Record<string, unknown>)[k] = v
+  }
+  return out as T
 }
 
 export function planBatch(session: Session, batch: Ev[]): Plan {
@@ -152,7 +168,22 @@ export function planBatch(session: Session, batch: Ev[]): Plan {
     plan.toolUse.set(id, keys)
   }
 
+  const patchRun = (key: string, patch: RunPatch) => {
+    plan.workflows[key] = mergeRun(plan.workflows[key] ?? {}, patch)
+  }
+  // A notification names its run by task id: the run may be in the session or in this batch.
+  const keyOfTask = (taskId: string): string | undefined => {
+    for (const [k, w] of Object.entries(plan.workflows)) if (w.taskId === taskId) return k
+    for (const [k, w] of Object.entries(session.workflows)) if (w.taskId === taskId) return k
+    return undefined
+  }
+
   for (const { ev } of kept) {
+    if (ev.t === 'run-update') {
+      const key = ev.key ?? (ev.taskId ? keyOfTask(ev.taskId) : undefined)
+      if (key) patchRun(key, ev.patch)
+      continue
+    }
     lane(ev.lane).push(ev)
     if (ev.t === 'spawned' && ev.meta.toolUseId) link(ev.meta.toolUseId, ev.lane)
     if (ev.t === 'tool-end') {
@@ -168,9 +199,20 @@ export function planBatch(session: Session, batch: Ev[]): Plan {
         })
       }
       if (ev.workflow) {
-        const prev = plan.workflows[ev.workflow.runId]
-        const name = prev?.name ?? ev.workflow.name
-        plan.workflows[ev.workflow.runId] = name ? { name } : {}
+        const w = ev.workflow
+        const key = runKey(w)
+        if (key) {
+          patchRun(key, {
+            ...(w.name ? { name: w.name } : {}),
+            ...(w.taskId ? { taskId: w.taskId } : {}),
+            ...(w.transcriptDir ? { transcriptDir: w.transcriptDir } : {}),
+            ...(w.scriptPath ? { scriptPath: w.scriptPath } : {}),
+            ...(w.sessionUrl ? { sessionUrl: w.sessionUrl } : {}),
+            toolUseId: ev.id,
+            startedAt: ev.startedAt,
+            status: w.remote ? 'remote' : 'running',
+          })
+        }
       }
     }
   }
@@ -352,6 +394,12 @@ function apply(l: Lane, ev: Ev, now: number) {
       l.status = 'running'
       return
     }
+    case 'lane-phase': {
+      l.phase = ev.phase
+      return
+    }
+    case 'run-update':
+      return
     case 'say': {
       // Display only: never reopens a finished lane.
       if (isTerminal(l.status)) return
@@ -446,6 +494,7 @@ export function digestOf(lane: Lane, depth: number): Digest {
   }
   if (meta?.model) d.model = meta.model
   if (!main && meta?.parent) d.parent = meta.parent
+  if (lane.phase) d.phase = lane.phase
   if (meta?.run) d.run = meta.run
   if (lane.endedAt !== undefined) d.endedAt = lane.endedAt
   if (last) d.last = { kind: last.kind, summary: last.summary, at: last.start }
@@ -517,15 +566,11 @@ export function reduceSession(
   for (const l of changed) digests[l.key] = digestOf(l, digests[l.key]?.depth ?? 0)
 
   const workflows = { ...session.workflows }
-  const addRun = (runId: string, name?: string) => {
-    const prev = workflows[runId]
-    if (prev) {
-      if (!prev.name && name) workflows[runId] = { ...prev, name }
-    } else {
-      workflows[runId] = { ...(name ? { name } : {}), at: now, ordinal: Object.keys(workflows).length + 1 }
-    }
+  const addRun = (key: string, patch: RunPatch = {}) => {
+    const prev = workflows[key] ?? { at: now, ordinal: Object.keys(workflows).length + 1 }
+    workflows[key] = mergeRun(prev, patch)
   }
-  for (const [runId, w] of Object.entries(plan.workflows)) addRun(runId, w.name)
+  for (const [key, patch] of Object.entries(plan.workflows)) addRun(key, patch)
   for (const l of changed) if (l.meta?.run) addRun(l.meta.run)
 
   const archived = { ...session.archived }

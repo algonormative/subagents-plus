@@ -29,7 +29,13 @@ export type TimelineLaneRow = {
   /** Recency rank for the lane cap: lower is kept first (main, live, emphasized, recent). */
   keep: number
 }
-export type TimelineGroupRow = { t: 'group'; label: string; depth: number }
+export type TimelineGroupRow = {
+  t: 'group'
+  label: string
+  depth: number
+  /** A workflow run's span and phases: drawn as a band over its agents' lanes. */
+  band?: { start: number; end?: number; live: boolean; ended?: 'ok' | 'error'; phases: { title: string; start?: number; end?: number }[] }
+}
 export type TimelineRow = TimelineLaneRow | TimelineGroupRow
 
 export type TimelineOpts = {
@@ -46,7 +52,7 @@ export type Built = { source: string; level: number; alt: string; height: number
 
 const AXIS_H = 20
 const ROW_H = 20
-const GROUP_H = 15
+const GROUP_H = 20
 const BAR_H = 14
 const TICK_H = 8
 const RECENT_TITLES = 40
@@ -159,8 +165,30 @@ function buildAt(all: readonly TimelineRow[], o: TimelineOpts, level: Level): { 
   for (const { row, top } of placed) {
     if (row.t === 'group') {
       const ix = 4 + row.depth * 12
-      out.push(`<text x="${ix}" y="${top + 11}" class="ax sm">◇ ${xmlEscape(row.label)}</text>`)
-      out.push(`<line x1="${x0}" y1="${top + 8}" x2="${x1}" y2="${top + 8}" class="sax" stroke-opacity=".18"/>`)
+      const room = Math.max(4, Math.floor((labelW - ix - 6) / 6.1))
+      const name = row.label.length > room ? `${row.label.slice(0, room - 1)}…` : row.label
+      out.push(`<text x="${ix}" y="${top + 14}" class="fg sm" font-weight="600">◇ ${xmlEscape(name)}</text>`)
+      const b = row.band
+      if (!b) {
+        out.push(`<line x1="${x0}" y1="${top + 10}" x2="${x1}" y2="${top + 10}" class="sax" stroke-opacity=".18"/>`)
+        continue
+      }
+      // The run as a band, its phases as segments, each titled where it fits.
+      const by = top + 5
+      const bh = 11
+      const rx0 = x(b.start)
+      const rw = Math.max(2, x(b.end ?? o.now) - rx0)
+      out.push(`<rect x="${rx0}" y="${by}" width="${rw}" height="${bh}" rx="3" class="trk" fill-opacity=".18"/>`)
+      b.phases.forEach((p, pi) => {
+        if (p.start === undefined) return
+        const px = x(p.start)
+        const pw = Math.max(2, x(p.end ?? b.end ?? o.now) - px)
+        out.push(`<rect x="${px}" y="${by}" width="${pw}" height="${bh}" rx="2" class="fi${pi % 7}" fill-opacity="${p.end === undefined ? '.55' : '.35'}">${level.titles !== 'none' ? `<title>${xmlEscape(p.title)}</title>` : ''}</rect>`)
+        const fits = Math.floor((pw - 6) / 5.6)
+        if (fits >= 3) out.push(`<text x="${px + 4}" y="${by + 8.5}" class="fg" font-size="8.5">${xmlEscape(p.title.length > fits ? `${p.title.slice(0, fits - 1)}…` : p.title)}</text>`)
+      })
+      if (b.live) out.push(`<circle cx="${x(o.now)}" cy="${by + bh / 2}" r="3" class="fim"/>`)
+      else if (b.ended) out.push(`<text x="${x1 + 8}" y="${top + 14}" class="${b.ended === 'ok' ? 'ok' : 'err'} lab">${b.ended === 'ok' ? '✓' : '✗'}</text>`)
       continue
     }
     const mid = top + ROW_H / 2

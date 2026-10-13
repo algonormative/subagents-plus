@@ -2,7 +2,7 @@
 // Pure: no `$`. Every event carries the epoch it was captured in (a /clear
 // bumps it, and the reducer drops events of an older one) and its own time.
 
-import type { Kind, LaneMeta, LaneStatus, Usage } from '../types'
+import type { Kind, LaneMeta, LaneStatus, RunPatch, Usage } from '../types'
 
 type Base = { epoch: number; at: number }
 
@@ -34,8 +34,11 @@ export type Ev =
       childTotals?: { tokens: number; tools: number; durationMs: number }
       /** How an Agent call launched: completed in the foreground, sent to the background, remote, a teammate. */
       launch?: 'completed' | 'async' | 'remote' | 'teammate'
-      /** A Workflow call's run, so its agents group under the workflow's name. */
-      workflow?: { runId: string; name?: string }
+      /**
+       * A Workflow call's run: its agents group under it. Keyed by runId; a
+       * remote run has none and is keyed by its task id.
+       */
+      workflow?: { runId?: string; taskId?: string; name?: string; transcriptDir?: string; scriptPath?: string; sessionUrl?: string; remote?: boolean }
     })
   /**
    * What the parent's Agent call reported about the child it started, routed to
@@ -45,6 +48,10 @@ export type Ev =
   | (Base & { t: 'child-report'; lane: string; tokens?: number; launch?: 'completed' | 'async' | 'remote' | 'teammate' })
   /** What a lane's model is streaming right now: the tail of its text or thinking, or the tool it is calling. */
   | (Base & { t: 'say'; lane: string; kind: 'text' | 'thinking' | 'tool'; text: string })
+  /** News about a workflow run, by run key or by the task id its notification names. */
+  | (Base & { t: 'run-update'; lane: string; key?: string; taskId?: string; patch: RunPatch })
+  /** A workflow agent's phase, read from the run's agent meta.json. */
+  | (Base & { t: 'lane-phase'; lane: string; phase: string })
   /** The main loop began a turn (turn.start fires for main only). */
   | (Base & { t: 'turn-start'; lane: string; turnId: string })
   /** A model request began on a lane (turn.step before next). */
@@ -82,4 +89,9 @@ export function usageOf(u: unknown): Usage | undefined {
     cacheRead: n(r.cache_read_input_tokens),
     cacheWrite: n(r.cache_creation_input_tokens),
   }
+}
+
+/** The run key a Workflow result files under: its runId, else (remote) its task id. */
+export function runKey(w: { runId?: string; taskId?: string }): string | undefined {
+  return w.runId ?? (w.taskId ? `task:${w.taskId}` : undefined)
 }

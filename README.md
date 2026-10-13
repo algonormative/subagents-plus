@@ -38,6 +38,7 @@ prompt while agents run.
   - its tool mix and recent calls
   - its final answer
   - its transcript, read in the pane
+- **Workflow runs.** A run of the Workflow tool is a row of its own: name, status, agents done of total, elapsed time and tokens, with its agents grouped under their phases (from the script's `meta.phases`), each phase with its own progress. On the timeline a run is a band split into its phases, and on the desktop its Workflow tool row gets a live card. Remote runs link to their cloud session.
 - **Timeline.** Swimlanes of tool calls (colored by kind) and model time per agent. The agent buttons under it open an agent in the tree.
 - **Agent-row cards** (desktop app). Each Agent call in the transcript gets a live card: status, model, a strip of its tool calls, and counts. The engine's own row stays underneath.
 - **Band above the prompt.** While subagents run it shows each agent with its elapsed time and a two-minute activity sparkline. It closes 10 seconds after the last one finishes.

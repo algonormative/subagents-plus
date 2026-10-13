@@ -3,7 +3,7 @@
 
 import type { Elements, RenderElement, RenderSurface } from 'claude-code'
 
-import type { Digest, Kind, Lane, LaneStatus, Session, Span, UiState, Usage } from '../types'
+import type { Digest, Kind, Lane, LaneStatus, RunStatus, Session, Span, UiState, Usage } from '../types'
 import { clip, fmtDuration, fmtTokens } from './format'
 import { KIND_LABEL, KIND_ORDER } from './kinds'
 import { cachedTokens, isLive, isTerminal, totalTokens } from './model'
@@ -17,6 +17,7 @@ export type Kit = {
   Text: Elements['desktop']['Text']
   Button: Elements['desktop']['Button']
   Markdown: Elements['desktop']['Markdown']
+  Link: Elements['desktop']['Link']
   Svg?: Elements['desktop']['Svg']
   Raster?: Elements['terminal']['Raster']
 }
@@ -33,6 +34,8 @@ export type Actions = {
   toggleAnswer: () => void
   jump?: (key: string) => void
   open?: (key?: string) => void
+  /** Open the pane on a workflow run, unfolded. */
+  openRun?: (key: string) => void
 }
 
 /** A drawn picture: Svg source on a remote surface, Raster cells on the terminal. */
@@ -59,8 +62,16 @@ export function timelineRows(session: Session, lanes: ReadonlyMap<string, Lane>,
     if (d.run !== run) {
       run = d.run
       if (run !== undefined) {
-        const wf = session.workflows[run]
-        rows.push({ t: 'group', label: wf?.name ? wf.name : `Workflow ${wf?.ordinal ?? ''}`.trim(), depth: Math.max(0, d.depth) })
+        const r = runSummary(session, run, Date.now())
+        rows.push({
+          t: 'group', label: r.name, depth: Math.max(0, d.depth),
+          band: {
+            start: r.startedAt, ...(r.endedAt !== undefined ? { end: r.endedAt } : {}),
+            live: r.status === 'running' && r.live > 0,
+            ...(r.status === 'completed' ? { ended: 'ok' as const } : r.status === 'failed' || r.status === 'killed' ? { ended: 'error' as const } : {}),
+            phases: r.phases.map(p => ({ title: p.title, ...(p.start !== undefined ? { start: p.start } : {}), ...(p.end !== undefined ? { end: p.end } : {}) })),
+          },
+        })
       }
     }
     const isMain = key === 'main'
@@ -285,34 +296,115 @@ function transcriptView(k: Kit, rows: TranscriptRow[] | 'unreadable' | undefined
 
 // ---- the tree ----------------------------------------------------------------------
 
+export type RunSummary = {
+  key: string
+  name: string
+  status: RunStatus
+  agents: number
+  done: number
+  failed: number
+  live: number
+  tokens: number
+  startedAt: number
+  endedAt?: number
+  phases: { title: string; total: number; done: number; live: number; start?: number; end?: number }[]
+  sessionUrl?: string
+}
+
+const ENDED_RUN: ReadonlySet<RunStatus> = new Set(['completed', 'failed', 'killed'])
+
+/** One run's standing, from its record and its agents' digests. */
+export function runSummary(session: Session, key: string, now: number = session.lastEventAt): RunSummary {
+  const wf = session.workflows[key]
+  const ds = Object.values(session.digests).filter(d => d.run === key && !d.hidden)
+  const ended = (d: Digest) => isTerminal(d.status)
+  const titles = [...(wf?.phases ?? [])]
+  for (const d of ds) if (d.phase && !titles.includes(d.phase)) titles.push(d.phase)
+  const phases = titles.map(title => {
+    const of = ds.filter(d => d.phase === title)
+    const starts = of.map(d => d.startedAt)
+    const ends = of.map(d => d.endedAt).filter((x): x is number => x !== undefined)
+    return {
+      title, total: of.length, done: of.filter(ended).length, live: of.filter(d => isLive(d.status) && !d.quiet).length,
+      ...(starts.length ? { start: Math.min(...starts) } : {}),
+      ...(of.length && ends.length === of.length ? { end: Math.max(...ends) } : {}),
+    }
+  })
+  const starts = ds.map(d => d.startedAt)
+  const lastEnd = ds.length && ds.every(ended) ? Math.max(...ds.map(d => d.endedAt ?? d.startedAt)) : undefined
+  // A missed notification (a reload mid-run) must not leave a run spinning:
+  // every agent ended and a minute of quiet counts as done.
+  const settled = wf?.status === 'running' && lastEnd !== undefined && now - lastEnd > 60_000
+  const status: RunStatus = settled ? (ds.some(d => d.status === 'failed') ? 'failed' : 'completed') : (wf?.status ?? 'running')
+  return {
+    key,
+    name: wf?.name || `Workflow ${wf?.ordinal ?? ''}`.trim(),
+    status,
+    agents: Math.max(ds.length, wf?.agents ?? 0),
+    done: ds.filter(d => d.status === 'completed').length,
+    failed: ds.filter(d => d.status === 'failed' || d.status === 'killed' || d.status === 'lost').length,
+    live: ds.filter(d => isLive(d.status) && !d.quiet).length,
+    tokens: ds.reduce((n, d) => n + d.tokens, 0),
+    startedAt: wf?.startedAt ?? (starts.length ? Math.min(...starts) : wf?.at ?? 0),
+    ...(ENDED_RUN.has(status) ? { endedAt: wf?.endedAt ?? lastEnd } : {}),
+    phases,
+    ...(wf?.sessionUrl ? { sessionUrl: wf.sessionUrl } : {}),
+  }
+}
+
 type TreeRow =
-  | { t: 'group'; label: string; depth: number; rail: string }
+  | { t: 'run'; run: RunSummary; n: number; rail: string; childRail: string; children: number }
+  | { t: 'phase'; title: string; total: number; done: number; live: number; rail: string }
   | { t: 'agent'; d: Digest; n: number; rail: string; childRail: string; children: number }
+
+type Item = { depth: number; d?: Digest; run?: string; phase?: { title: string; total: number; done: number; live: number } }
 
 /**
  * Rows in display order with box-drawing rails (`├─`, `└─`, `│`), children of a
- * folded agent left out. `n` is the agent's arrival ordinal: what its Buttons are keyed by.
+ * folded row left out. A workflow run is a row of its own, its agents under
+ * their phases. `n` is an arrival ordinal: what a row's Buttons are keyed by.
  */
 export function treeRows(session: Session, folded: readonly string[]): TreeRow[] {
-  const items: { d?: Digest; group?: string; depth: number }[] = []
-  let run: string | undefined
-  for (const key of session.order) {
-    const d = session.digests[key]
-    if (!d || d.hidden) continue
-    if (d.run !== run) {
-      run = d.run
-      if (run !== undefined) {
-        const wf = session.workflows[run]
-        items.push({ group: wf?.name ? wf.name : `Workflow ${wf?.ordinal ?? ''}`.trim(), depth: Math.max(1, d.depth) })
-      }
+  const items: Item[] = []
+  const seenRuns = new Set<string>()
+  const order = session.order.map(k => session.digests[k]).filter((d): d is Digest => !!d && !d.hidden)
+  for (let i = 0; i < order.length; i++) {
+    const d = order[i]!
+    if (!d.run) {
+      items.push({ d, depth: d.depth })
+      continue
     }
-    // A workflow's agents sit one level under its heading.
-    items.push({ d, depth: d.depth + (d.run !== undefined ? 1 : 0) })
+    // A run's agents are contiguous among their siblings: take the block.
+    const block: Digest[] = []
+    while (i < order.length && order[i]!.run === d.run && order[i]!.depth === d.depth) block.push(order[i++]!)
+    i--
+    const run = runSummary(session, d.run)
+    seenRuns.add(d.run)
+    items.push({ run: d.run, depth: Math.max(1, d.depth) })
+    const titles = run.phases.map(p => p.title)
+    const rank = (x: Digest) => (x.phase ? titles.indexOf(x.phase) : titles.length)
+    block.sort((a, b) => rank(a) - rank(b) || a.startedAt - b.startedAt)
+    let current: string | undefined
+    for (const x of block) {
+      const base = Math.max(1, d.depth) + 1
+      if (titles.length && x.phase !== current) {
+        current = x.phase
+        const p = run.phases.find(q => q.title === x.phase)
+        if (p) items.push({ phase: p, depth: base })
+      }
+      items.push({ d: x, depth: titles.length && x.phase ? base + 1 : base })
+    }
   }
+  // Runs with no agent here yet, or none at all (remote): a row each, at the end.
+  for (const [key, wf] of Object.entries(session.workflows).sort((a, b) => a[1].at - b[1].at)) {
+    if (!seenRuns.has(key) && wf.toolUseId) items.push({ run: key, depth: 1 })
+  }
+
   const out: TreeRow[] = []
   const fold = new Set(folded)
   // Keys by arrival, not position: a new agent above never shifts a Button being clicked.
   const ordinal = new Map(Object.keys(session.digests).map((k, i) => [k, i + 1]))
+  const runOrdinal = new Map(Object.entries(session.workflows).map(([k, w]) => [k, w.ordinal]))
   let hideBelow = Infinity
   items.forEach((it, i) => {
     if (it.depth > hideBelow) return
@@ -330,17 +422,66 @@ export function treeRows(session: Session, folded: readonly string[]): TreeRow[]
     if (it.depth > 0) rail += more(it.depth) ? '├─' : '└─'
     let childRail = ''
     for (let l = 1; l <= it.depth; l++) childRail += more(l) ? '│ ' : '  '
-    if (it.group !== undefined) {
-      out.push({ t: 'group', label: it.group, depth: it.depth, rail })
+    let children = 0
+    for (let j = i + 1; j < items.length && items[j]!.depth > it.depth; j++) if (items[j]!.d) children++
+    if (it.phase) {
+      out.push({ t: 'phase', ...it.phase, rail })
+      return
+    }
+    if (it.run !== undefined) {
+      out.push({ t: 'run', run: runSummary(session, it.run, Date.now()), n: runOrdinal.get(it.run) ?? out.length + 1, rail, childRail, children })
+      if (fold.has(`run:${it.run}`) && children > 0) hideBelow = it.depth
       return
     }
     const d = it.d!
-    let children = 0
-    for (let j = i + 1; j < items.length && items[j]!.depth > it.depth; j++) if (items[j]!.d) children++
     out.push({ t: 'agent', d, n: ordinal.get(d.key) ?? out.length + 1, rail, childRail, children })
     if (fold.has(d.key) && children > 0) hideBelow = it.depth
   })
   return out
+}
+
+const RUN_WORD: Record<RunStatus, string> = { running: 'running', completed: 'done', failed: 'failed', killed: 'stopped', remote: 'remote' }
+
+function runGlyph(r: RunSummary, now: number): string {
+  if (r.status === 'running') return SPIN[Math.floor(now / 1000) % SPIN.length]!
+  return r.status === 'completed' ? '✓' : r.status === 'remote' ? '↗' : r.status === 'killed' ? '■' : '✗'
+}
+
+function runRow(k: Kit, x: PaneInput, row: Extract<TreeRow, { t: 'run' }>, a: Actions): RenderElement {
+  const r = row.run
+  const isFolded = (x.ui.folded ?? []).includes(`run:${r.key}`)
+  const color = r.status === 'completed' ? STATUS_SWATCH.ok.dark : r.status === 'failed' ? STATUS_SWATCH.error.dark : undefined
+  const meta = [
+    `workflow · ${RUN_WORD[r.status]}`,
+    r.agents ? `${r.done}/${r.agents} agents${r.failed ? ` · ${r.failed} failed` : ''}` : '',
+    r.startedAt ? fmtDuration((r.endedAt ?? x.now) - r.startedAt) : '',
+    r.tokens ? `${fmtTokens(r.tokens)} tok` : '',
+  ].filter(Boolean).join(' · ')
+  return (
+    <k.Box flexDirection="row" columnGap={1}>
+      <k.Box flexDirection="row" flexShrink={0}>
+        {row.rail ? <k.Text dimColor>{row.rail}</k.Text> : null}
+        {row.children > 0
+          ? <k.Button key={`foldrun-${row.n}`} plain dimColor label={isFolded ? `▸${row.children}` : '▾'} onPress={() => a.fold(`run:${r.key}`)} />
+          : <k.Text dimColor>{row.rail ? '─' : ' '}</k.Text>}
+      </k.Box>
+      <k.Text><k.Text color={color}>{runGlyph(r, x.now)}</k.Text> <k.Text bold>◇ {clip(r.name, 40)}</k.Text></k.Text>
+      <k.Text dimColor wrap="truncate-end">{meta}</k.Text>
+      {r.sessionUrl ? <k.Link href={r.sessionUrl} label="open session" /> : null}
+    </k.Box>
+  )
+}
+
+function phaseRow(k: Kit, row: Extract<TreeRow, { t: 'phase' }>): RenderElement {
+  const done = row.total > 0 && row.done === row.total
+  return (
+    <k.Box flexDirection="row" columnGap={1}>
+      <k.Text dimColor>{row.rail}</k.Text>
+      <k.Text dimColor={!row.live}>{row.title}</k.Text>
+      <k.Text dimColor>{row.done}/{row.total}{row.live ? ` · ${row.live} running` : ''}</k.Text>
+      {done ? <k.Text color={STATUS_SWATCH.ok.dark}>✓</k.Text> : null}
+    </k.Box>
+  )
 }
 
 /** A running agent's name breathes between its color and the page's text, once a second. */
@@ -435,9 +576,7 @@ function tree(k: Kit, x: PaneInput, a: Actions): RenderElement {
   const rows = treeRows(x.session, x.ui.folded ?? [])
   return (
     <k.Box flexDirection="column">
-      {rows.map(row => row.t === 'group'
-        ? <k.Text dimColor>{row.rail}◇ {row.label}</k.Text>
-        : agentRow(k, x, row, a))}
+      {rows.map(row => row.t === 'run' ? runRow(k, x, row, a) : row.t === 'phase' ? phaseRow(k, row) : agentRow(k, x, row, a))}
     </k.Box>
   )
 }
@@ -541,6 +680,46 @@ export function cardTree(k: Kit, d: Digest | undefined, lane: Lane | undefined, 
         {a.open && d ? (
           <k.Box flexDirection="row"><k.Button key="card-details" label="Details" plain dimColor onPress={() => a.open?.(d.key)} /></k.Box>
         ) : null}
+      </k.Box>
+      {below ?? null}
+    </k.Box>
+  )
+}
+
+// ---- inline Workflow card -----------------------------------------------------
+
+/** A Workflow tool row as a live card: the run, its phases, its agents. */
+export function runCardTree(k: Kit, r: RunSummary | undefined, input: { name?: string }, now: number, a: Actions, below?: RenderElement): RenderElement {
+  const name = r?.name ?? input.name ?? 'workflow'
+  const color = r?.status === 'completed' ? STATUS_SWATCH.ok.dark : r?.status === 'failed' ? STATUS_SWATCH.error.dark : undefined
+  return (
+    <k.Box flexDirection="column">
+      <k.Box flexDirection="column" borderStyle="round" borderColor={textColor(-1, k.surface)} paddingX={1}>
+        <k.Box flexDirection="row" justifyContent="space-between">
+          <k.Text wrap="truncate-end"><k.Text color={color}>{r ? runGlyph(r, now) : '●'}</k.Text> <k.Text bold>◇ {clip(name, 48)}</k.Text> <k.Text dimColor>workflow</k.Text></k.Text>
+          <k.Text color={color}>{r ? `${RUN_WORD[r.status]} ${r.startedAt ? fmtDuration((r.endedAt ?? now) - r.startedAt) : ''}` : 'starting…'}</k.Text>
+        </k.Box>
+        {r && r.phases.length ? (
+          <k.Text wrap="wrap">
+            {r.phases.map((p, i) => (
+              <k.Text>
+                {i ? <k.Text dimColor>  →  </k.Text> : null}
+                <k.Text dimColor={!p.live && p.done < p.total}>{p.title}</k.Text>
+                <k.Text dimColor> {p.done}/{p.total}</k.Text>
+                {p.total > 0 && p.done === p.total ? <k.Text color={STATUS_SWATCH.ok.dark}> ✓</k.Text> : p.live ? <k.Text dimColor> ·{p.live} running</k.Text> : null}
+              </k.Text>
+            ))}
+          </k.Text>
+        ) : null}
+        {r ? (
+          <k.Text dimColor wrap="truncate-end">
+            {r.agents} agents{r.done ? ` · ${r.done} done` : ''}{r.live ? ` · ${r.live} running` : ''}{r.failed ? ` · ${r.failed} failed` : ''}{r.tokens ? ` · ${fmtTokens(r.tokens)} tok` : ''}
+          </k.Text>
+        ) : null}
+        <k.Box flexDirection="row" columnGap={1}>
+          {r?.sessionUrl ? <k.Link href={r.sessionUrl} label="open session" /> : null}
+          {a.openRun && r ? <k.Button key="run-details" label="Details" plain dimColor onPress={() => a.openRun?.(r.key)} /> : null}
+        </k.Box>
       </k.Box>
       {below ?? null}
     </k.Box>

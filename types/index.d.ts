@@ -48,7 +48,7 @@ export type LaneMeta = {
   background?: boolean
   /** Parent lane key: an agent id, or 'main'. */
   parent: string
-  /** Workflow run id (internal key into Session.workflows). */
+  /** Workflow run key (internal key into Session.workflows). */
   run?: string
   runIndex?: number
   /** The Agent (or Workflow) tool_use id that started it. */
@@ -99,6 +99,8 @@ export type Lane = {
   missingSince?: number
   /** Seen in $.agent.list() at least once. */
   listed?: true
+  /** A workflow agent's phase, read from its meta.json. */
+  phase?: string
 }
 
 /** The small per-lane summary the band, the constellation and the chips read. */
@@ -127,7 +129,39 @@ export type Digest = {
   quiet?: true
   /** True when the lane has no meta yet (an engine fork, or a spawn record still on its way): not drawn. */
   hidden?: true
+  /** A workflow agent's phase. */
+  phase?: string
 }
+
+export type RunStatus = 'running' | 'completed' | 'failed' | 'killed' | 'remote'
+
+/** A Workflow tool run: what its call returned, what its script declares, and how it ended. */
+export type WorkflowRun = {
+  name?: string
+  at: number
+  ordinal: number
+  /** The background task id the Workflow call returned: what the end-of-run notification names. */
+  taskId?: string
+  status?: RunStatus
+  startedAt?: number
+  endedAt?: number
+  /** Phase titles, in the order the script's `meta.phases` declares them. */
+  phases?: string[]
+  /** Where the run keeps each agent's transcript and meta.json (local runs). */
+  transcriptDir?: string
+  scriptPath?: string
+  /** The Workflow tool_use id: which transcript row the run's card draws on. */
+  toolUseId?: string
+  /** A remote run's cloud session. */
+  sessionUrl?: string
+  /** From the end-of-run notification. */
+  agents?: number
+  durationMs?: number
+  tokens?: number
+}
+
+/** A change to a run record; fields left out keep their value. */
+export type RunPatch = Partial<Omit<WorkflowRun, 'at' | 'ordinal'>>
 
 export type Session = {
   v: 1
@@ -137,7 +171,7 @@ export type Session = {
   order: string[]
   digests: Record<string, Digest>
   /** Workflow runs by run id: the name the Workflow call's result gave, and when it was first seen. */
-  workflows: Record<string, { name?: string; at: number; ordinal: number }>
+  workflows: Record<string, WorkflowRun>
   colorNext: number
   live: number
   done: number

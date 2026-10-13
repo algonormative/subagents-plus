@@ -265,7 +265,7 @@ test('workflow agents group under the run and the run gets its name', async () =
     spawned('agent-bbbb', T0 + 200, meta('second', { run: 'run-secret-1' })),
     toolEnd('main', 'wf1', T0 + 90, T0 + 80, { tool: 'Workflow', kind: 'agent', workflow: { runId: 'run-secret-1', name: 'audit' } }),
   ])
-  expect(w.session.workflows['run-secret-1']).toEqual({ name: 'audit', at: expect.any(Number), ordinal: 1 })
+  expect(w.session.workflows['run-secret-1']).toMatchObject({ name: 'audit', ordinal: 1, status: 'running' })
   expect(w.session.order).toEqual(['main', 'agent-aaaa', 'agent-bbbb', 'agent-cccc'])
   for (const d of Object.values(w.session.digests)) expect(d.label.includes('run-secret-1')).toBe(false)
 })
@@ -344,4 +344,37 @@ test('past 150 lanes the oldest finished are archived and totals stay true', asy
   expect(w.session.digests['agent-0000']).toBeUndefined()
   expect(w.session.digests['agent-0299']).toBeDefined()
   expect(w.session.order.length).toBe(150)
+})
+
+test('a workflow run records its launch, phases, agent phases and how it ended', async () => {
+  const wf = { runId: 'wf_r1', taskId: 'task-9', name: 'probe', transcriptDir: '/tmp/x', scriptPath: '/tmp/x.js' }
+  let w = feed(world(), [
+    toolStart('main', 'toolu_wf', T0, 'bash'),
+    toolEnd('main', 'toolu_wf', T0 + 50, T0, { tool: 'Workflow', kind: 'agent', workflow: wf }),
+    spawned('a1', T0 + 100, meta('Map the reducer', { run: 'wf_r1' })),
+    spawned('a2', T0 + 110, meta('Summarize', { run: 'wf_r1' })),
+  ])
+  expect(w.session.workflows.wf_r1).toMatchObject({ name: 'probe', taskId: 'task-9', toolUseId: 'toolu_wf', status: 'running', startedAt: T0 })
+  w = feed(w, [
+    { t: 'run-update', epoch: EP, at: T0 + 200, lane: 'main', key: 'wf_r1', patch: { phases: ['Scan', 'Summarize'] } },
+    { t: 'lane-phase', epoch: EP, at: T0 + 200, lane: 'a1', phase: 'Scan' },
+  ])
+  expect(w.session.workflows.wf_r1?.phases).toEqual(['Scan', 'Summarize'])
+  expect(w.session.digests.a1?.phase).toBe('Scan')
+  // The notification names the task, not the run.
+  w = feed(w, [{ t: 'run-update', epoch: EP, at: T0 + 900, lane: 'main', taskId: 'task-9', patch: { status: 'completed', endedAt: T0 + 900, agents: 2 } }])
+  expect(w.session.workflows.wf_r1).toMatchObject({ status: 'completed', endedAt: T0 + 900, agents: 2 })
+  // A late launch echo never reopens an ended run, and no lane is made for run news.
+  w = feed(w, [{ t: 'run-update', epoch: EP, at: T0 + 950, lane: 'main', key: 'wf_r1', patch: { status: 'running' } }])
+  expect(w.session.workflows.wf_r1?.status).toBe('completed')
+  // A notification for an unknown task changes nothing.
+  w = feed(w, [{ t: 'run-update', epoch: EP, at: T0 + 990, lane: 'main', taskId: 'other', patch: { status: 'failed' } }])
+  expect(Object.keys(w.session.workflows)).toEqual(['wf_r1'])
+})
+
+test('a remote workflow run is keyed by its task and marked remote', async () => {
+  const w = feed(world(), [
+    toolEnd('main', 'toolu_r', T0 + 10, T0, { tool: 'Workflow', kind: 'agent', workflow: { taskId: 'task-r', name: 'cloud', sessionUrl: 'https://claude.ai/code/session_x', remote: true } }),
+  ])
+  expect(w.session.workflows['task:task-r']).toMatchObject({ status: 'remote', sessionUrl: 'https://claude.ai/code/session_x' })
 })

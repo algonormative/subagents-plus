@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+Workflows.
+
+- A Workflow run is a row of its own in the tree: its name, status (running, done, failed, stopped, remote), agents done of total, elapsed time and tokens. Its agents sit under it, grouped by phase in the order the script declares them, each phase with its own progress. Fold a run with its `▾`.
+- The run ends when the engine's end-of-run notification arrives. If that was missed (a reload mid-run), a run whose agents have all finished counts as done after a minute of quiet.
+- Timeline: each run is a band over its agents' lanes, split into phase segments.
+- Desktop: a live card on the Workflow tool row, with phase progress and a Details button that opens the run in the pane.
+- Remote runs show as remote, with a link to their cloud session.
+
 ## 0.1.3
 
 - Agents tree: a running agent with nothing to report yet no longer draws an empty line of rails.
