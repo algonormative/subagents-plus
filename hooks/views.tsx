@@ -465,7 +465,7 @@ function runRow(k: Kit, x: PaneInput, row: Extract<TreeRow, { t: 'run' }>, a: Ac
           ? <k.Button key={`foldrun-${row.n}`} plain dimColor label={isFolded ? `▸${row.children}` : '▾'} onPress={() => a.fold(`run:${r.key}`)} />
           : <k.Text dimColor>{row.rail ? '─' : ' '}</k.Text>}
       </k.Box>
-      <k.Text><k.Text color={color}>{runGlyph(r, x.now)}</k.Text> <k.Text bold>◇ {clip(r.name, 40)}</k.Text></k.Text>
+      <k.Box flexShrink={0}><k.Text wrap="truncate-end"><k.Text color={color}>{runGlyph(r, x.now)}</k.Text> <k.Text bold>◇ {clip(r.name, 40)}</k.Text></k.Text></k.Box>
       <k.Text dimColor wrap="truncate-end">{meta}</k.Text>
       {r.sessionUrl ? <k.Link href={r.sessionUrl} label="open session" /> : null}
     </k.Box>

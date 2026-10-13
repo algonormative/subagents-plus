@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- The Workflow-row card draws in the terminal. The desktop app draws its own native card for Workflow calls and never offers that row to mods, so there it keeps its own.
+- A run's name stays on one line in the tree.
+
 ## 0.2.0
 
 Workflows.

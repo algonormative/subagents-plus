@@ -22,6 +22,10 @@ prompt while agents run.
 |---|---|
 | <img src="docs/agent-card.png" alt="A finished Agent tool row as a card: type, task, model, a strip of its tool calls, counts and tokens" width="380"> | <img src="docs/band.png" alt="The band above the prompt listing seven running agents with elapsed times and a sparkline" width="380"> |
 
+| A workflow run: its phases and agents | The run on the timeline |
+|---|---|
+| <img src="docs/workflow-tree.png" alt="A workflow run in the tree: the run row with status and agent count, its Scan phase done 3 of 3 and its Summarize phase running" width="380"> | <img src="docs/workflow-timeline.png" alt="The timeline with the workflow run drawn as a band split into its phases above its agents' lanes" width="380"> |
+
 <sub>Screenshots from the Claude desktop app, light theme. The pane, band and cards also draw in a terminal session.</sub>
 
 **In a terminal session** the pane docks beside the transcript ([demo/demo.tape](demo/demo.tape) records this with [VHS](https://github.com/charmbracelet/vhs)):
@@ -38,7 +42,7 @@ prompt while agents run.
   - its tool mix and recent calls
   - its final answer
   - its transcript, read in the pane
-- **Workflow runs.** A run of the Workflow tool is a row of its own: name, status, agents done of total, elapsed time and tokens, with its agents grouped under their phases (from the script's `meta.phases`), each phase with its own progress. On the timeline a run is a band split into its phases, and on the desktop its Workflow tool row gets a live card. Remote runs link to their cloud session.
+- **Workflow runs.** A run of the Workflow tool is a row of its own: name, status, agents done of total, elapsed time and tokens, with its agents grouped under their phases (from the script's `meta.phases`), each phase with its own progress. On the timeline a run is a band split into its phases. In a terminal its Workflow tool row becomes a live card (the desktop app draws its own Workflow card). Remote runs link to their cloud session.
 - **Timeline.** Swimlanes of tool calls (colored by kind) and model time per agent. The agent buttons under it open an agent in the tree.
 - **Agent-row cards** (desktop app). Each Agent call in the transcript gets a live card: status, model, a strip of its tool calls, and counts. The engine's own row stays underneath.
 - **Band above the prompt.** While subagents run it shows each agent with its elapsed time and a two-minute activity sparkline. It closes 10 seconds after the last one finishes.

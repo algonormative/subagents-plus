@@ -660,8 +660,9 @@ export const register: Register = (on, options) => {
   }
 
   if (o.inlineCards !== 'off') {
+    // The desktop draws its own Workflow card and never asks for this row; the
+    // terminal draws a plain row, so the card is drawn wherever it is asked for.
     on('ui.render', { component: 'ToolUse', props: { tool: 'Workflow' } }, async ($, e, next) => {
-      if (o.inlineCards === 'desktop' && e.surface === 'terminal') return next(e)
       const session = await read($, sessionRef)
       const key = session ? Object.keys(session.workflows).find(k => session.workflows[k]!.toolUseId === e.props.tool_use_id) : undefined
       if (!key && !e.props.isRunning) return next(e)
