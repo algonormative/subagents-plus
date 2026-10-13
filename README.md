@@ -1,5 +1,12 @@
 # subagents-plus
 
+[![ci](https://github.com/algonormative/subagents-plus/actions/workflows/ci.yml/badge.svg)](https://github.com/algonormative/subagents-plus/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/algonormative/subagents-plus?color=blue)](https://github.com/algonormative/subagents-plus/releases/latest)
+[![license](https://img.shields.io/github/license/algonormative/subagents-plus)](LICENSE)
+[![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-D97757?logo=claude&logoColor=white)](#install)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-%E2%89%A52.1.295-D97757)](https://code.claude.com/docs/en/plugins/mods/overview)
+[![surfaces](https://img.shields.io/badge/surfaces-desktop%20%C2%B7%20terminal-555)](#install)
+
 See what your subagents are doing. A Claude Code mod that adds a `/subagents` pane:
 a live, expandable tree of every subagent in the session, nested under the agent
 that spawned it. It also adds a card on each Agent tool row and a band above the

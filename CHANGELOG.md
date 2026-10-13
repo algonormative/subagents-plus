@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Home directories show as `~` in tool summaries, live lines and transcripts, so the pane never shows whose machine an agent ran on.
+- The `diagnostics` option is off unless set to true, matching its documented default.
+
 ## 0.1.0
 
 First release.

@@ -24,6 +24,13 @@ export function scrubSecrets(s: string): string {
     .replace(LONG_RUN, (run) => (/[A-Za-z]/.test(run) && /[0-9]/.test(run) ? '…' : run))
 }
 
+const HOME = /(?:\/Users|\/home)\/[^/\s'"]+(?=\/|\s|$)|C:\\Users\\[^\\\s'"]+/g
+
+/** Home directories written as `~`: shorter, and a summary never shows whose machine it ran on. */
+export function tildeHome(s: string): string {
+  return String(s ?? '').replace(HOME, '~')
+}
+
 /** At most n characters, a clipped string ending in '…'. */
 export function clip(s: string, n: number): string {
   if (n <= 0) return ''

@@ -4,7 +4,7 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 import type { Lane, Session, UiState } from '../types'
 import type { Ev } from './events'
 import { MAIN, usageOf } from './events'
-import { clip } from './format'
+import { clip, tildeHome } from './format'
 import { classify, summarize } from './kinds'
 import { axisEnd, pxWidth, SVG_ELEMENT_MAX } from './layout'
 import { emptySession, isLive, planBatch, reconcileEvents, reduceLane, reduceSession } from './model'
@@ -280,7 +280,7 @@ async function transcriptOf($: EngineInterface, agentId: string): Promise<Transc
     if (!Array.isArray(found)) return 'unreadable'
     return found.slice(-60).map(m => ({
       role: m.role,
-      text: m.text,
+      text: tildeHome(m.text),
       tools: m.toolUses.map(t => ({ tool: String(t.tool), summary: summarize(String(t.tool), t.input), ...((t as { isError?: boolean }).isError ? { isError: true } : {}) })),
     }))
   } catch (err) {
@@ -340,7 +340,7 @@ export const register: Register = (on, options) => {
     band: options.band !== false,
     streamTap: options.streamTap === 'all' || options.streamTap === 'off' ? options.streamTap : 'subagents',
     animate: options.animate !== false,
-    diagnostics: options.diagnostics !== false,
+    diagnostics: options.diagnostics === true,
   }
 
   on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
@@ -476,7 +476,7 @@ export const register: Register = (on, options) => {
         if (c.kind === 'text' || c.kind === 'thinking') {
           const prev = saying.get(lane)
           const text = (prev && prev.kind === c.kind ? prev.text : '') + c.text
-          saying.set(lane, { kind: c.kind, text: text.slice(-240), at: Date.now() })
+          saying.set(lane, { kind: c.kind, text: tildeHome(text.slice(-240)), at: Date.now() })
         } else if (c.kind === 'tool') {
           saying.set(lane, { kind: 'tool', text: c.name, at: Date.now() })
         }

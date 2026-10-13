@@ -122,3 +122,9 @@ test('label never shows the key', async () => {
   expect(label({ description: `run ${key}`, type: '', parent: 'main' }, key).includes(key)).toBe(false)
   expect(label({ description: 'x'.repeat(100), type: '', parent: 'main' }, key).length).toBe(48)
 })
+
+test('summaries show home directories as ~', async () => {
+  expect(summarize('Bash', { command: 'cd /Users/someone/git/app && ls -la' })).toBe('cd ~/git/app && ls -la')
+  expect(summarize('Read', { file_path: '/home/dev/project/src/main.ts' })).toBe('src/main.ts')
+  expect(summarize('Grep', { pattern: 'x', path: '/Users/someone/repo' })).not.toContain('someone')
+})

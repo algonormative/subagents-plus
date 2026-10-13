@@ -1,6 +1,6 @@
 {
   "name": "subagents-plus",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "See your subagents: a /subagents pane with an expandable tree of every subagent (live activity, tokens, transcripts) and a timeline, live cards on Agent rows, and a band above the prompt",
   "author": {
     "name": "algonormative",

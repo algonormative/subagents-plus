@@ -1,7 +1,7 @@
 // What a tool call is (for color and counting) and a one-line, safe summary of it.
 
 import type { Kind } from '../types'
-import { clip, sanitize, scrubSecrets } from './format'
+import { clip, sanitize, scrubSecrets, tildeHome } from './format'
 
 export const KIND_ORDER: Kind[] = ['read', 'search', 'edit', 'write', 'bash', 'web', 'mcp', 'agent', 'other']
 
@@ -121,7 +121,7 @@ function raw(tool: string, input: unknown): string {
 /** Short, single-line, secret-free, at most 60 characters; never throws. */
 export function summarize(tool: string, input: unknown): string {
   try {
-    return clip(scrubSecrets(sanitize(raw(String(tool), input))), 60)
+    return clip(scrubSecrets(tildeHome(sanitize(raw(String(tool), input)))), 60)
   } catch {
     return ''
   }
