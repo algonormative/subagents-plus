@@ -1,6 +1,6 @@
 {
   "name": "subagents-plus",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "See your subagents and workflows: a /subagents pane with an expandable tree of every subagent and workflow run (live activity, phases, tokens, transcripts) and a timeline, live cards on Agent rows (and Workflow rows in a terminal), and a band above the prompt",
   "author": {
     "name": "algonormative",

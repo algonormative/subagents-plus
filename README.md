@@ -26,6 +26,10 @@ prompt while agents run.
 |---|---|
 | <img src="docs/workflow-tree.png" alt="A workflow run in the tree: the run row with status and agent count, its Scan phase done 3 of 3 and its Summarize phase running" width="380"> | <img src="docs/workflow-timeline.png" alt="The timeline with the workflow run drawn as a band split into its phases above its agents' lanes" width="380"> |
 
+In a terminal the Workflow row becomes a live card, and the run sits in the docked pane with its phases:
+
+<img src="docs/workflow-terminal.png" alt="Terminal: a workflow run's card in the transcript showing both phases done, and the docked Agents pane with the run, its Scan and Summarize phases and their three agents" width="760">
+
 <sub>Screenshots from the Claude desktop app, light theme. The pane, band and cards also draw in a terminal session.</sub>
 
 **In a terminal session** the pane docks beside the transcript ([demo/demo.tape](demo/demo.tape) records this with [VHS](https://github.com/charmbracelet/vhs)):
@@ -41,7 +45,7 @@ prompt while agents run.
   - its token breakdown, with cache reads counted apart
   - its tool mix and recent calls
   - its final answer
-  - its transcript, read in the pane
+  - its transcript, read in the pane (a workflow agent's too, from its run's folder)
 - **Workflow runs.** A run of the Workflow tool is a row of its own: name, status, agents done of total, elapsed time and tokens, with its agents grouped under their phases (from the script's `meta.phases`), each phase with its own progress. On the timeline a run is a band split into its phases. In a terminal its Workflow tool row becomes a live card (the desktop app draws its own Workflow card). Remote runs link to their cloud session.
 - **Timeline.** Swimlanes of tool calls (colored by kind) and model time per agent. The agent buttons under it open an agent in the tree.
 - **Agent-row cards** (desktop app). Each Agent call in the transcript gets a live card: status, model, a strip of its tool calls, and counts. The engine's own row stays underneath.

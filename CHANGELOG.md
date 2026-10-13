@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2
+
+- Workflow agents' transcripts open in the pane. The engine doesn't hand them to mods, so the mod reads the agent's transcript file from its run's folder: the task it was given (the harness wrapper taken off), then each reply with its tool calls.
+- Tool counts read "1 tool", not "1 tools".
+- Releases no longer carry stale compiled `.js` copies of the hooks.
+- README: a terminal screenshot of a workflow run.
+
 ## 0.2.1
 
 - The Workflow-row card draws in the terminal. The desktop app draws its own native card for Workflow calls and never offers that row to mods, so there it keeps its own.

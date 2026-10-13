@@ -11,7 +11,7 @@ import { emptySession, isLive, planBatch, reconcileEvents, reduceLane, reduceSes
 import { timelineCells, sparkCells } from './raster'
 import { cardStripSvg, foldActivity, sparklineSvg } from './svg-mini'
 import { buildTimelineSvg } from './svg-timeline'
-import { parseNotification, parsePhases } from './workflow'
+import { parseNotification, parsePhases, parseTranscript } from './workflow'
 import type { Actions, Kit, Picture, TranscriptRow } from './views'
 import { bandTree, cardTree, paneTree, runCardTree, runSummary, timelineRows } from './views'
 
@@ -311,10 +311,36 @@ function actionsFor($: EngineInterface): Actions {
   }
 }
 
+/** The last read of a workflow agent's transcript file, kept two seconds so a redraw doesn't re-read it. */
+let fileTranscript: { agentId: string; at: number; rows: TranscriptRow[] } | undefined
+
+/** A workflow agent's transcript, read from `agent-<id>.jsonl` in its run's folder. */
+async function workflowTranscript($: EngineInterface, agentId: string): Promise<TranscriptRow[] | 'unreadable'> {
+  const session = await read($, sessionRef)
+  const run = session?.digests[agentId]?.run
+  const dir = run ? session?.workflows[run]?.transcriptDir : undefined
+  if (!dir) return 'unreadable'
+  const now = await $.clock.now()
+  if (fileTranscript?.agentId === agentId && now - fileTranscript.at < 2000) return fileTranscript.rows
+  try {
+    const rows = parseTranscript(String(await $.fs.read(`${dir}/agent-${agentId}.jsonl`)), (tool, input) => summarize(tool, input))
+      .slice(-60)
+      .map(m => ({ ...m, text: tildeHome(m.text) }))
+    fileTranscript = { agentId, at: now, rows }
+    return rows
+  } catch (err) {
+    note('transcript', err)
+    return 'unreadable'
+  }
+}
+
 async function transcriptOf($: EngineInterface, agentId: string): Promise<TranscriptRow[] | 'unreadable'> {
   try {
     const found = await $.session.messages({ agentId })
-    if (!Array.isArray(found)) return 'unreadable'
+    if (!Array.isArray(found) || !found.length) {
+      const fromFile = await workflowTranscript($, agentId)
+      return fromFile === 'unreadable' && Array.isArray(found) ? [] : fromFile
+    }
     return found.slice(-60).map(m => ({
       role: m.role,
       text: tildeHome(m.text),

@@ -131,7 +131,7 @@ export function statsLine(session: Session, now: number): string {
   const failed = subs.filter(d => d.status === 'failed' || d.status === 'killed' || d.status === 'lost').length
   const parts = [`● ${live} live`, `✓ ${done} done`]
   if (failed) parts.push(`✗ ${failed}`)
-  parts.push(`${session.totals.tools} tools`, `${fmtTokens(session.totals.tokens)} tok`)
+  parts.push(`${session.totals.tools} tool${session.totals.tools === 1 ? '' : 's'}`, `${fmtTokens(session.totals.tokens)} tok`)
   if (session.totals.cached) parts.push(`${fmtTokens(session.totals.cached)} cached`)
   if (session.firstSpawnAt !== undefined) {
     const wall = Math.max(1, now - session.firstSpawnAt)
@@ -274,7 +274,7 @@ function liveLine(k: Kit, lane: Lane, now: number): RenderElement | null {
 
 function transcriptView(k: Kit, rows: TranscriptRow[] | 'unreadable' | undefined): RenderElement {
   if (rows === undefined) return <k.Text dimColor>Reading the transcript…</k.Text>
-  if (rows === 'unreadable') return <k.Text dimColor>This agent's transcript can't be read from here (workflow and remote agents keep theirs elsewhere).</k.Text>
+  if (rows === 'unreadable') return <k.Text dimColor>This agent's transcript can't be read from here (remote agents keep theirs in their cloud session).</k.Text>
   if (rows.length === 0) return <k.Text dimColor>Nothing in its transcript yet.</k.Text>
   const shown = rows.slice(-14)
   return (
@@ -501,7 +501,7 @@ function agentRow(k: Kit, x: PaneInput, row: Extract<TreeRow, { t: 'agent' }>, a
   if (d.key !== 'main') meta.push(d.model ? `${d.type} · ${shortModel(d.model)}` : d.type)
   if (d.key !== 'main' || live) meta.push(`${STATUS_WORD[d.status]}${d.quiet ? ' (quiet)' : ''}`)
   if (d.key !== 'main') meta.push(fmtDuration(elapsed(d, x.now)))
-  meta.push(`${d.tools} tools`, `${fmtTokens(d.tokens)} tok`)
+  meta.push(`${d.tools} tool${d.tools === 1 ? '' : 's'}`, `${fmtTokens(d.tokens)} tok`)
   const stripWidth = 112
   const strip = k.Svg && lane && d.key !== 'main' && lane.spans.length > 0 && x.columns >= 90
     ? cardStripSvg(lane.spans, { width: stripWidth, t0: lane.spawnedAt ?? lane.firstAt, now: lane.lastAt, end: lane.endedAt, color: lane.color, live })
@@ -631,7 +631,7 @@ export function bandTree(k: Kit, session: Session, now: number, viewKey: string 
     const span = recent.length ? Math.max(...recent.map(d => (d.endedAt ?? now) - d.startedAt)) : 0
     return (
       <k.Box flexDirection="row" columnGap={1}>
-        <k.Text><k.Text color={STATUS_SWATCH.ok.dark}>✓</k.Text> {recent.length} agent{recent.length === 1 ? '' : 's'} done in {fmtDuration(span)} <k.Text dimColor>· {recent.reduce((s, d) => s + d.tools, 0)} tools</k.Text></k.Text>
+        <k.Text><k.Text color={STATUS_SWATCH.ok.dark}>✓</k.Text> {recent.length} agent{recent.length === 1 ? '' : 's'} done in {fmtDuration(span)} <k.Text dimColor>· {plural(recent.reduce((s, d) => s + d.tools, 0), 'tool')}</k.Text></k.Text>
         {a.open ? <k.Button key="band-open" label="Agents" hotkey="o" plain dimColor onPress={() => a.open?.()} /> : null}
       </k.Box>
     )
@@ -671,7 +671,7 @@ export function cardTree(k: Kit, d: Digest | undefined, lane: Lane | undefined, 
         {strip ? pictureEl(k, strip) : null}
         {lane ? (
           <k.Text dimColor wrap="truncate-end">
-            {lane.tools} tools
+            {plural(lane.tools, 'tool')}
             {KIND_ORDER.filter(kind => (lane.counts[kind] ?? 0) > 0).slice(0, 4).map(kind => ` · ${lane.counts[kind]} ${KIND_LABEL[kind].toLowerCase()}`).join('')}
             {' · '}{fmtTokens(totalTokens(lane.tokens))} tok{cachedTokens(lane.tokens) ? ` + ${fmtTokens(cachedTokens(lane.tokens))} cached` : ''}{children ? ` · ${children} nested` : ''}{lane.errors ? ` · ${lane.errors} errors` : ''}
           </k.Text>
@@ -724,4 +724,8 @@ export function runCardTree(k: Kit, r: RunSummary | undefined, input: { name?: s
       {below ?? null}
     </k.Box>
   )
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`
 }

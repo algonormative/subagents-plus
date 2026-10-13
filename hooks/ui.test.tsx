@@ -134,7 +134,13 @@ test('options turn the band and the cards off', { options: { band: false, inline
 })
 
 const SCRIPT = `export const meta = { name: 'probe', description: 'x', phases: [ { title: 'Scan' }, { title: 'Summarize' } ] }`
-const META: Record<string, string> = { 'agent-wfa.meta.json': '{"workflowPhase":"Scan"}', 'agent-wfb.meta.json': '{"workflowPhase":"Scan"}', 'agent-wfc.meta.json': '{"workflowPhase":"Summarize"}' }
+const META: Record<string, string> = { 'agent-wfa.meta.json': '{"workflowPhase":"Scan"}', 'agent-wfb.meta.json': '{"workflowPhase":"Scan"}', 'agent-wfc.meta.json': '{"workflowPhase":"Summarize"}',
+  'agent-wfa.jsonl': [
+    { type: 'user', message: { role: 'user', content: '[Workflow harness — user request] relayed text' } },
+    { type: 'user', message: { role: 'user', content: '[Workflow harness — computed task] The computed task text follows:\n  Map the reducer in model.ts.' } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_r1', name: 'Read', input: { file_path: '/repo/model.ts' } }] } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'It folds events into lanes.' }] } },
+  ].map(r => JSON.stringify(r)).join('\n') }
 
 async function seedWorkflow($: any, on: any, opts: { remote?: boolean } = {}) {
   const clock = mock.clock(on, { now: NOW } as never)
@@ -214,4 +220,19 @@ test('a remote workflow run shows as remote with a link to its session', async (
   expect(await ui.find({ text: /◇ cloud-audit/ })).toBeDefined()
   expect(await ui.find({ text: /workflow · remote/ })).toBeDefined()
   expect(String((await ui.find({ type: 'Link' }))?.props.href)).toBe('https://claude.ai/code/session_demo')
+})
+
+test("a workflow agent's transcript is read from its run folder", async ($, on) => {
+  await seedWorkflow($, on)
+  const ui = await $.ui.mount({ plugin: 'subagents-plus', surface: 'desktop', component: 'Pane', requestId: 'subagents', props: PANE_PROPS as never })
+  const row = (await ui.findAll({ type: 'Button' })).find(b => /Map the reducer/.test(String(b.props.label)))
+  expect(row).toBeDefined()
+  await ui.press({ key: String(row!.key) })
+  const n = String(row!.key).replace('row-', '')
+  await ui.press({ key: `tx-${n}` })
+  expect(await ui.find({ text: /Map the reducer in model.ts/ })).toBeDefined()
+  expect(await ui.find({ text: /It folds events into lanes/ })).toBeDefined()
+  expect(await ui.find({ text: /can't be read/ })).toBeUndefined()
+  expect(await allText(ui)).not.toContain('relayed text')
+  noIds(await allText(ui))
 })

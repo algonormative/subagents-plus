@@ -4,3 +4,4 @@ node_modules/
 *.tsbuildinfo
 demo/terminal-*.png
 demo/terminal.mp4
+hooks/*.js
