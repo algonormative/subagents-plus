@@ -381,9 +381,11 @@ function agentRow(k: Kit, x: PaneInput, row: Extract<TreeRow, { t: 'agent' }>, a
         <k.Text dimColor wrap="truncate-end">{meta.join(' · ')}{d.errors ? ` · ${d.errors} errors` : ''}</k.Text>
         {strip && k.Svg ? <k.Box flexShrink={0}><k.Svg source={strip} alt={`${d.tools} tool calls`} width={stripWidth} height={14} /></k.Box> : null}
       </k.Box>
-      {live && lane ? (
-        <k.Box flexDirection="row"><k.Text dimColor>{pad}</k.Text>{liveLine(k, lane, x.now)}</k.Box>
-      ) : null}
+      {(() => {
+        // Nothing to say yet draws nothing: no row of bare rails.
+        const line = live && lane ? liveLine(k, lane, x.now) : null
+        return line ? <k.Box flexDirection="row"><k.Text dimColor>{pad}</k.Text>{line}</k.Box> : null
+      })()}
       {isOpen && lane ? (
         <k.Box flexDirection="row">
           <k.Text dimColor>{pad}</k.Text>

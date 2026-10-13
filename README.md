@@ -12,6 +12,18 @@ a live, expandable tree of every subagent in the session, nested under the agent
 that spawned it. It also adds a card on each Agent tool row and a band above the
 prompt while agents run.
 
+<p align="center"><img src="docs/agents-tree.png" alt="The Agents tree mid-run: seven subagents nested under their parents, each with a live line saying what it is doing, one expanded to show its tokens and recent calls" width="560"></p>
+
+| Transcript in the pane | Timeline |
+|---|---|
+| <img src="docs/agent-transcript.png" alt="An expanded agent showing its transcript: the task it was given and each tool call" width="380"> | <img src="docs/timeline.png" alt="Timeline: swimlanes per agent with tool calls colored by kind" width="380"> |
+
+| Card on an Agent row | Band above the prompt |
+|---|---|
+| <img src="docs/agent-card.png" alt="A finished Agent tool row as a card: type, task, model, a strip of its tool calls, counts and tokens" width="380"> | <img src="docs/band.png" alt="The band above the prompt listing seven running agents with elapsed times and a sparkline" width="380"> |
+
+<sub>Screenshots from the Claude desktop app, light theme. The pane, band and cards also draw in a terminal session.</sub>
+
 - **Agents tree.** Every subagent nested under its parent, and workflow agents grouped under their workflow. Each row shows:
   - status, with the name gently pulsing while the agent runs
   - type and model

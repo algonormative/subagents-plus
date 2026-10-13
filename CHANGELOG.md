@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- Agents tree: a running agent with nothing to report yet no longer draws an empty line of rails.
+- README: screenshots.
+
 ## 0.1.2
 
 - Timeline: a wider name column (up to a third of the pane), so agent names are readable.
