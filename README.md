@@ -113,6 +113,23 @@ On first load the engine writes its API types to `.claude-plugin/types/` (git-ig
 
 Releases: bump `version` in `.claude-plugin/plugin.json`, add a `CHANGELOG.md` section, then tag `v<version>`. GitHub Actions validates, tests and publishes the release. Installs update through `/plugin update` (or the marketplace's auto-update) once the version changes.
 
+### Re-record the demo
+
+`demo/demo.tape` records `demo/terminal.gif` with [VHS](https://github.com/charmbracelet/vhs) in your own logged-in `claude`. To keep your other plugins out of the recording, give it a settings file that turns every installed plugin off except this one:
+
+```bash
+python3 - > /tmp/subagents-plus-demo-settings.json <<'EOF'
+import json, os
+s = json.load(open(os.path.expanduser("~/.claude/settings.json")))
+on = {n: n.split("@")[0] == "subagents-plus" for n in s.get("enabledPlugins", {})}
+out = {"enabledPlugins": on, "theme": "dark", "statusLine": {"type": "command", "command": "true"}}
+print(json.dumps(out))
+EOF
+DEMO_DIR="$(demo/setup.sh)" DEMO_SETTINGS=/tmp/subagents-plus-demo-settings.json vhs demo/demo.tape
+```
+
+The settings file only switches plugins for the recording; your own `settings.json` is untouched. Look through the GIF before you publish it: anything your session prints (paths, task titles) ends up in it.
+
 ## License
 
 MIT
