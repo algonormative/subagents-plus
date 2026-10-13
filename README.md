@@ -24,6 +24,10 @@ prompt while agents run.
 
 <sub>Screenshots from the Claude desktop app, light theme. The pane, band and cards also draw in a terminal session.</sub>
 
+**In a terminal session** the pane docks beside the transcript ([demo/demo.tape](demo/demo.tape) records this with [VHS](https://github.com/charmbracelet/vhs)):
+
+<img src="demo/terminal.gif" alt="Terminal demo: two subagents each spawning a nested one, shown live in the docked Agents pane and the band above the prompt" width="760">
+
 - **Agents tree.** Every subagent nested under its parent, and workflow agents grouped under their workflow. Each row shows:
   - status, with the name gently pulsing while the agent runs
   - type and model
