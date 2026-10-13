@@ -1,0 +1,15 @@
+{
+  "name": "subagents-plus",
+  "description": "subagents-plus, a Claude Code mod that shows your subagents live",
+  "owner": {
+    "name": "algonormative",
+    "url": "https://github.com/algonormative"
+  },
+  "plugins": [
+    {
+      "name": "subagents-plus",
+      "source": "./",
+      "description": "See your subagents: an expandable live tree of every subagent, a timeline, Agent-row cards and a band above the prompt"
+    }
+  ]
+}

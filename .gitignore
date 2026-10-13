@@ -1,0 +1,4 @@
+# Written by the engine at each load: the API types and a tsconfig it extends
+.claude-plugin/types/
+node_modules/
+*.tsbuildinfo

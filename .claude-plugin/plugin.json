@@ -1,0 +1,68 @@
+{
+  "name": "subagents-plus",
+  "version": "0.1.0",
+  "description": "See your subagents: a /subagents pane with an expandable tree of every subagent (live activity, tokens, transcripts) and a timeline, live cards on Agent rows, and a band above the prompt",
+  "author": {
+    "name": "algonormative",
+    "url": "https://github.com/algonormative"
+  },
+  "homepage": "https://github.com/algonormative/subagents-plus",
+  "repository": "https://github.com/algonormative/subagents-plus",
+  "license": "MIT",
+  "keywords": [
+    "subagents",
+    "agents",
+    "visualization",
+    "pane",
+    "mod"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "autoOpen": {
+      "type": "boolean",
+      "title": "Open the pane on the first subagent",
+      "description": "Opens the Agents pane once per session when the first subagent spawns, only where the surface docks panes beside the transcript",
+      "default": true
+    },
+    "inlineCards": {
+      "type": "string",
+      "title": "Live cards on Agent rows",
+      "description": "Draw a live card on each Agent tool row: on the desktop only, everywhere, or nowhere",
+      "options": [
+        "desktop",
+        "all",
+        "off"
+      ],
+      "default": "desktop"
+    },
+    "band": {
+      "type": "boolean",
+      "title": "Band above the prompt",
+      "description": "A compact live strip above the prompt while subagents run",
+      "default": true
+    },
+    "streamTap": {
+      "type": "string",
+      "title": "Model-time tap",
+      "description": "Time each model request (turn.step) for subagents, for every loop, or not at all; off approximates model time from gaps between tool calls",
+      "options": [
+        "subagents",
+        "all",
+        "off"
+      ],
+      "default": "subagents"
+    },
+    "animate": {
+      "type": "boolean",
+      "title": "Animate",
+      "description": "Pulse live agents and animate the small pictures where the surface draws them",
+      "default": true
+    },
+    "diagnostics": {
+      "type": "boolean",
+      "title": "Diagnostics tool",
+      "description": "Register a status tool the model can call to read what the mod sees and draws (development aid)",
+      "default": false
+    }
+  }
+}
