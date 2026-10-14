@@ -317,9 +317,9 @@ let fileTranscript: { agentId: string; at: number; rows: TranscriptRow[] } | und
 /** A workflow agent's transcript, read from `agent-<id>.jsonl` in its run's folder. */
 async function workflowTranscript($: EngineInterface, agentId: string): Promise<TranscriptRow[] | 'unreadable'> {
   const session = await read($, sessionRef)
-  const run = session?.digests[agentId]?.run
-  const dir = run ? session?.workflows[run]?.transcriptDir : undefined
-  if (!dir) return 'unreadable'
+  const d = session?.digests[agentId]
+  const dir = d?.run ? session?.workflows[d.run]?.transcriptDir : undefined
+  if (!d || !dir) return 'unreadable'
   const now = await $.clock.now()
   if (fileTranscript?.agentId === agentId && now - fileTranscript.at < 2000) return fileTranscript.rows
   try {
@@ -330,7 +330,8 @@ async function workflowTranscript($: EngineInterface, agentId: string): Promise<
     return rows
   } catch (err) {
     note('transcript', err)
-    return 'unreadable'
+    // A starting agent's file may not be written yet.
+    return isLive(d.status) ? [] : 'unreadable'
   }
 }
 
@@ -338,8 +339,9 @@ async function transcriptOf($: EngineInterface, agentId: string): Promise<Transc
   try {
     const found = await $.session.messages({ agentId })
     if (!Array.isArray(found) || !found.length) {
-      const fromFile = await workflowTranscript($, agentId)
-      return fromFile === 'unreadable' && Array.isArray(found) ? [] : fromFile
+      const session = await read($, sessionRef)
+      if (session?.digests[agentId]?.run) return await workflowTranscript($, agentId)
+      return Array.isArray(found) ? [] : 'unreadable'
     }
     return found.slice(-60).map(m => ({
       role: m.role,

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3
+
+- A finished workflow agent whose transcript file can't be read now says so, instead of "Nothing in its transcript yet". A starting one still shows nothing yet, since its file may not be written.
+- Tests for agents whose turn was aborted or errored, failed tool calls, and a workflow agent with no transcript file.
+
 ## 0.2.2
 
 - Workflow agents' transcripts open in the pane. The engine doesn't hand them to mods, so the mod reads the agent's transcript file from its run's folder: the task it was given (the harness wrapper taken off), then each reply with its tool calls.

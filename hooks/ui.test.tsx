@@ -20,7 +20,9 @@ async function seed($: any, on: any) {
   const clock = mock.clock(on, { now: NOW } as never)
   let next = 1
   on('agent.spawn', async () => ({ model: 'claude-sonnet-5-5', agentId: next++ === 1 ? AGENT : NESTED }))
-  on('tool.call', async (_$: unknown, e: { tool: string }) => ({ result: e.tool === 'Agent' ? { status: 'async_launched', agentId: AGENT } : { ok: true } }))
+  on('tool.call', async (_$: unknown, e: { tool: string }) => e.tool === 'Bash'
+    ? { result: 'exit 1', isError: true }
+    : { result: e.tool === 'Agent' ? { status: 'async_launched', agentId: AGENT } : { ok: true } })
   on('turn.complete', async () => ({ text: '' }))
   on('agent.list', async () => ({ value: [] }))
   on('ui.open', async () => ({ value: { isPlaced: true } }))
@@ -163,6 +165,7 @@ async function seedWorkflow($: any, on: any, opts: { remote?: boolean } = {}) {
   on('ui.open', async () => ({ value: { isPlaced: true } }))
   on('session.usage', async () => ({ value: { cost: { usd: 0.5 } } }))
   on('session.messages', async () => ({ value: [] }))
+  on('turn.complete', async () => ({ text: '' }))
   on('ui.render', async ($r: any, e: any) => { const { Box } = $r.ui.resolve(e); return <Box key="engine-own" /> })
   await $.tool.call({ tool: 'Workflow', tool_use_id: 'toolu_WF', script: SCRIPT } as never)
   if (!opts.remote) {
@@ -234,5 +237,45 @@ test("a workflow agent's transcript is read from its run folder", async ($, on) 
   expect(await ui.find({ text: /It folds events into lanes/ })).toBeDefined()
   expect(await ui.find({ text: /can't be read/ })).toBeUndefined()
   expect(await allText(ui)).not.toContain('relayed text')
+  noIds(await allText(ui))
+})
+
+for (const [reason, word] of [['aborted', 'stopped'], ['error', 'failed']] as const) {
+  test(`an agent whose turn ends ${reason} shows as ${word}, in the tree and on its card`, async ($, on) => {
+    const clock = await seed($, on)
+    await $.turn.complete({ answer: '', durationMs: 900, isAborted: reason === 'aborted', turnId: 't1', agentId: AGENT, reason } as never)
+    await clock.advance(450)
+    const ui = await $.ui.mount({ plugin: 'subagents-plus', surface: 'desktop', component: 'Pane', requestId: 'subagents', props: PANE_PROPS as never })
+    expect(await ui.find({ text: new RegExp(word) })).toBeDefined()
+    expect(await ui.find({ text: /running/ })).toBeDefined() // its nested agent is still going
+    const card = await $.ui.mount({ plugin: 'subagents-plus', surface: 'desktop', component: 'ToolUse', requestId: TOOL_USE, props: { ...ROW_PROPS, isRunning: false, isErrored: reason === 'error', isInterrupted: reason === 'aborted' } as never })
+    expect(await card.find({ text: /Explore/ })).toBeDefined()
+    expect(await card.find({ key: 'engine-own' })).toBeDefined()
+    expect(await card.find({ text: /✓/ })).toBeUndefined()
+    noIds(await allText(card))
+  })
+}
+
+test('a failed tool call is marked in the agent\'s recent calls', async ($, on) => {
+  const clock = await seed($, on)
+  await $.tool.call({ tool: 'Bash', tool_use_id: 'toolu_b1', command: 'npm test', agentId: AGENT } as never)
+  await clock.advance(450)
+  const ui = await $.ui.mount({ plugin: 'subagents-plus', surface: 'desktop', component: 'Pane', requestId: 'subagents', props: PANE_PROPS as never })
+  await ui.press({ key: 'row-1' })
+  expect(await ui.find({ text: /✗/ })).toBeDefined()
+  expect(await ui.find({ text: /3 tools/ })).toBeDefined()
+})
+
+test("a workflow agent without a transcript file says it can't be read once it has finished", async ($, on) => {
+  const clock = await seedWorkflow($, on)
+  const ui = await $.ui.mount({ plugin: 'subagents-plus', surface: 'desktop', component: 'Pane', requestId: 'subagents', props: PANE_PROPS as never })
+  const row = (await ui.findAll({ type: 'Button' })).find(b => /Map the views/.test(String(b.props.label)))
+  expect(row).toBeDefined()
+  await ui.press({ key: String(row!.key) })
+  await ui.press({ key: `tx-${String(row!.key).replace('row-', '')}` })
+  expect(await ui.find({ text: /Nothing in its transcript yet/ })).toBeDefined()
+  await $.turn.complete({ answer: 'done', durationMs: 900, isAborted: false, turnId: 'w1', agentId: 'wfb', reason: 'answer' } as never)
+  await clock.advance(2500)
+  expect(await ui.find({ text: /can't be read/ })).toBeDefined()
   noIds(await allText(ui))
 })
